@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 import logging
 import os
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,10 @@ class DatabaseManager:
             raise
 
     def __enter__(self):
-        """Abre conexión a la base de datos con detección de errores"""
+        """Implementación del context manager"""
         try:
             self.conn = sqlite3.connect(self.db_path)
-            self.conn.row_factory = sqlite3.Row  # Para acceso por nombre de columna
+            self.conn.row_factory = sqlite3.Row
             return self.conn.cursor()
         except sqlite3.Error as e:
             logger.error(f"Error al conectar a DB: {e}")
@@ -81,9 +82,21 @@ class DatabaseManager:
                         FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                     )''')
                 
+                # Tabla para guardar planes
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS user_plans (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        plan_type TEXT NOT NULL,
+                        plan_content TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+                    )''')
+                
                 # Añadir índices para mejor performance
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_id ON users(user_id)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_reminder_user ON reminders(user_id)')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_plans ON user_plans(user_id)')
                 
             logger.info(f"Base de datos inicializada correctamente en {self.db_path}")
             return True
@@ -93,4 +106,80 @@ class DatabaseManager:
             return False
         except Exception as e:
             logger.critical(f"Error inesperado en init_db: {e}")
+            return False
+
+    def get_user_data(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Obtiene los datos del usuario desde la base de datos"""
+        try:
+            with self as cursor:
+                cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+                user_data = cursor.fetchone()
+                return dict(user_data) if user_data else None
+        except sqlite3.Error as e:
+            logger.error(f"Error al obtener datos del usuario {user_id}: {e}")
+            return None
+
+    def save_user_data(self, user_id: int, user_data: Dict[str, Any]) -> bool:
+        """Guarda o actualiza los datos del usuario"""
+        try:
+            with self as cursor:
+                # Verificar si el usuario ya existe
+                cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+                exists = cursor.fetchone()
+                
+                if exists:
+                    # Actualizar datos existentes
+                    cursor.execute('''
+                        UPDATE users SET 
+                            name = ?, age = ?, weight = ?, height = ?, 
+                            activity_level = ?, health_goals = ?, 
+                            sleep_time = ?, work_hours = ?,
+                            last_update = CURRENT_TIMESTAMP
+                        WHERE user_id = ?
+                    ''', (
+                        user_data.get('name'),
+                        user_data.get('age'),
+                        user_data.get('weight'),
+                        user_data.get('height'),
+                        user_data.get('activity_level'),
+                        user_data.get('health_goals'),
+                        user_data.get('sleep_time'),
+                        user_data.get('work_hours'),
+                        user_id
+                    ))
+                else:
+                    # Insertar nuevo usuario
+                    cursor.execute('''
+                        INSERT INTO users (
+                            user_id, name, age, weight, height, 
+                            activity_level, health_goals, 
+                            sleep_time, work_hours
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        user_id,
+                        user_data.get('name'),
+                        user_data.get('age'),
+                        user_data.get('weight'),
+                        user_data.get('height'),
+                        user_data.get('activity_level'),
+                        user_data.get('health_goals'),
+                        user_data.get('sleep_time'),
+                        user_data.get('work_hours')
+                    ))
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error al guardar datos del usuario {user_id}: {e}")
+            return False
+
+    def save_plan(self, user_id: int, plan_type: str, plan_content: str) -> bool:
+        """Guarda un plan generado para el usuario"""
+        try:
+            with self as cursor:
+                cursor.execute('''
+                    INSERT INTO user_plans (user_id, plan_type, plan_content)
+                    VALUES (?, ?, ?)
+                ''', (user_id, plan_type, plan_content))
+                return True
+        except sqlite3.Error as e:
+            logger.error(f"Error al guardar plan para usuario {user_id}: {e}")
             return False

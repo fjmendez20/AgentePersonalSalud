@@ -112,6 +112,7 @@ class SetupHandlers:
 
     async def start_setup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['in_conversation'] = True  # <-- Añadir esto
+        context.user_data['_handled'] = True  # Marcar como manejado
         user_id = update.effective_user.id
         
         # Verificar registro existente
@@ -163,6 +164,8 @@ class SetupHandlers:
 
     # Handlers para cambios
     async def handle_change_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data['in_conversation'] = True  # <-- Añadir esto
+        context.user_data['_handled'] = True  # Marcar como manejado
         await update.callback_query.answer()
         await update.callback_query.edit_message_text("Por favor, dime tu nombre completo:")
         return self.states[0]

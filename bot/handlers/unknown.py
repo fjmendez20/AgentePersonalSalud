@@ -30,11 +30,19 @@ class UnknownHandler:
         )
     
     async def handle_unknown_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Verificar si hay una conversación activa en el ConversationHandler
-        if context.user_data.get('in_conversation'):
+        # Verificar si el mensaje ya fue manejado por otro handler
+        if context.user_data.get('_handled'):
             return
             
         try:
+            # Verificar si estamos en medio de una conversación
+            if context.user_data.get('in_conversation'):
+                return
+                
+            # Verificar si es un comando conocido (por si acaso)
+            if update.message.text.startswith('/'):
+                return
+                
             responses = [
                 "🤔 No estoy seguro de entender lo que necesitas. ¿Quieres ver el menú principal?",
                 "😅 Parece que no reconozco ese mensaje. ¿Te gustaría ver las opciones disponibles?",
